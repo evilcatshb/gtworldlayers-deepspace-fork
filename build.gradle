@@ -1,5 +1,3 @@
-// Theres probably SO much bloat here I just forked my other mod it shouldn't matter hopefully
-
 plugins {
     id 'idea'
     id "maven-publish"
@@ -8,22 +6,22 @@ plugins {
 }
 
 repositories {
-    mavenLocal()
+    // Local libs dir - JEI impl jar (compile-only, not shipped)
+    flatDir { dirs 'libs' }
+    mavenLocal()   // gtceu fork published via: cd gtceu_8.0.0 && ./gradlew publishToMavenLocal
     mavenCentral()
-    maven { url "https://maven.shedaniel.me/" }
-    maven { url = "https://maven.architectury.dev" }
-    maven { url = "https://maven.kyrptonaught.dev" }
+
+    // GTCeu maven (fallback if mavenLocal is missing)
     maven { url = 'https://maven.gtceu.com'; content { includeGroup 'com.gregtechceu.gtceu' } }
-    maven { url "https://maven.firstdarkdev.xyz/snapshots/" }
-    maven { url = "https://maven.saps.dev/minecraft"; content { includeGroup "dev.latvian.mods" } }
-    maven { url = "https://maven.tterrag.com/" }
-    maven { url = "https://maven.blamejared.com/" }
-    maven { url = "https://maven.theillusivec4.top/" }
+
+    // JEI API jars (thin, always reachable - compile-only)
+    maven { url = "https://maven.blamejared.com/"; content { includeGroupByRegex "mezz\\.jei.*" } }
+
+    // EMI
+    maven { url = "https://maven.terraformersmc.com/releases/"; content { includeGroup "dev.emi" } }
+
+    // CurseMaven (Jade)
     maven { url "https://cursemaven.com/"; content { includeGroup "curse.maven" } }
-    maven { url = "https://minecraft.curseforge.com/api/maven/" }
-    maven { url = "https://maven.terraformersmc.com/releases/" }
-    maven { url "https://maven.resourcefulbees.com/repository/maven-public/" }
-    maven { url 'https://libs.azuredoom.com:4443/mods' }
 }
 
 version = mod_version
@@ -47,10 +45,7 @@ minecraft {
         client { property 'forge.enabledGameTestNamespaces', mod_id }
         server { property 'forge.enabledGameTestNamespaces', mod_id; args '--nogui' }
         data {
-            // example of overriding the workingDirectory set in configureEach above
             workingDirectory project.file('run-data')
-
-            // Specify the modid for data generation, where to output the resulting resource, and where to look for existing resources.
             args '--mod', mod_id, '--all', '--output', file('src/generated/resources/'), '--existing', file('src/main/resources/')
         }
     }
@@ -59,33 +54,48 @@ minecraft {
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
 
-    // lombok
+    // Lombok
     compileOnly 'org.projectlombok:lombok:1.18.24'
     annotationProcessor 'org.projectlombok:lombok:1.18.24'
 
+    // ── GregTech (local fork, published to mavenLocal) ────────────────────────
+    // fg.deobf() remaps SRG->MCP so we can call GT classes by deobf name.
+    // To update: cd gtceu_8.0.0 && ./gradlew publishToMavenLocal
+    implementation fg.deobf("com.gregtechceu.gtceu:gtceu-1.20.1:${gtceu_version}")
+
+    // ── JEI (strictly optional) ───────────────────────────────────────────────
+    // API-only jars from blamejared: lets us write JEI compat without requiring it.
+    // No runtimeOnly — JEI is never a hard dependency; players use EMI or nothing.
     compileOnly fg.deobf("mezz.jei:jei-${minecraft_version}-forge-api:${jei_version}")
     compileOnly fg.deobf("mezz.jei:jei-${minecraft_version}-common-api:${jei_version}")
-    runtimeOnly fg.deobf("mezz.jei:jei-${minecraft_version}-forge:${jei_version}")
+    // Local full jar satisfies fg.deobf remapping; not on runtime classpath.
+    compileOnly(files("libs/jei-${minecraft_version}-forge-${jei_version}.jar"))
+
+    // ── EMI (preferred recipe viewer — dev runs only) ─────────────────────────
     runtimeOnly fg.deobf("dev.emi:emi-forge:${emi_version}+${minecraft_version}")
+
+    // ── Compile deps — local jars copied from modpack (exact version match) ───
+    compileOnly(files(
+        "libs/kubejs-forge-${kubejs_version}.jar",
+        "libs/rhino-forge-${rhino_version}.jar",
+        "libs/cloth-config-${cloth_config_version}-forge.jar",
+        "libs/architectury-${architectury_version}-forge.jar",
+        "libs/ad_astra-forge-${minecraft_version}-${ad_astra_version}.jar",
+        // Registrate is jarJar embedded inside gtceu - extract it explicitly for javac
+        "libs/Registrate-MC1.20-${registrate_version}.jar"
+    ))
+
+    // ── Runtime-only transitive deps — local jars from modpack ───────────────
+    runtimeOnly(files(
+        "libs/botarium-forge-${minecraft_version}-${botarium_version}.jar",
+        "libs/resourcefullib-forge-${minecraft_version}-${resourcefullib_version}.jar",
+        "libs/resourcefulconfig-forge-${minecraft_version}-${resourcefulconfig_version}.jar",
+        "libs/citadel-${citadel_version}-${minecraft_version}.jar",
+        "libs/configuration-forge-${minecraft_version}-${configuration_version}.jar"
+    ))
+
+    // Jade — runtime only (we don't call its API)
     runtimeOnly fg.deobf("curse.maven:jade-324717:5390389")
-
-    // gregtech
-    implementation fg.deobf("com.gregtechceu.gtceu:gtceu-${minecraft_version}:${gtceu_version}:slim") { transitive = false }
-    implementation fg.deobf("com.lowdragmc.ldlib:ldlib-forge-${minecraft_version}:${ldlib_version}") { transitive = false }
-    implementation fg.deobf("com.tterrag.registrate:Registrate:${registrate_version}")
-    implementation fg.deobf("dev.latvian.mods:kubejs-forge:${kubejs_version}")
-    implementation fg.deobf("dev.latvian.mods:rhino-forge:${rhino_version}")
-    runtimeOnly fg.deobf("dev.toma.configuration:configuration-forge-${minecraft_version}:${configuration_version}")
-    runtimeOnly fg.deobf("dev.architectury:architectury-forge:${architectury_version}")
-
-    // ws mods
-    implementation fg.deobf("me.shedaniel.cloth:cloth-config-forge:${cloth_config_version}")
-    runtimeOnly fg.deobf("com.teamresourceful.resourcefullib:resourcefullib-forge-${minecraft_version}:2.1.29")
-    runtimeOnly fg.deobf("com.teamresourceful.resourcefulconfig:resourcefulconfig-forge-${minecraft_version}:2.1.2")
-    runtimeOnly fg.deobf("earth.terrarium.botarium:botarium-forge-${minecraft_version}:2.3.4")
-    runtimeOnly fg.deobf("curse.maven:citadel-331936:5633260")
-
-    implementation fg.deobf("earth.terrarium.adastra:ad_astra-forge-${minecraft_version}:1.15.19") { transitive false }
 }
 
 tasks.named('processResources', ProcessResources).configure {
@@ -95,9 +105,10 @@ tasks.named('processResources', ProcessResources).configure {
                       "mod_name"         : mod_name,
                       "mod_url"          : mod_url,
                       "mod_author"       : mod_author,
-                      "forge_version"    : forge_version.split("\\.")[0], // only specify major version of forge
+                      "forge_version"    : forge_version.split("\\.")[0],
                       "minecraft_version": minecraft_version,
-                      "gtceu_version"    : gtceu_version,]
+                      "gtceu_version"    : gtceu_version,
+                      "jei_version"      : jei_version,]
     inputs.properties(properties)
     filesMatching("META-INF/mods.toml") { expand properties + [project: project] }
 }
@@ -107,3 +118,4 @@ tasks.withType(JavaCompile).configureEach {
     options.encoding = "UTF-8"
     options.release.set(17)
 }
+
